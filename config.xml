@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<widget xmlns="http://www.w3.org/ns/widgets"
+        xmlns:tizen="http://tizen.org/ns/widgets"
+        id="https://yourgithub.io/netmirror"
+        version="1.0.0"
+        viewmodes="fullscreen">
+
+    <tizen:application id="NetMirror.app"
+                       package="NetMirror"
+                       required_version="6.5"/>
+
+    <!-- App display name and description -->
+    <name>NetMirror</name>
+    <description>NetMirror streaming portal for Samsung TV</description>
+
+    <!-- App icon (replace icon.png with your 512x512 PNG) -->
+    <icon src="icon.png"/>
+
+    <!-- ─── NETWORK ACCESS ─────────────────────────────────────── -->
+    <!-- Allows loading ANY external URL (needed for web portal redirect) -->
+    <access origin="*" subdomains="true"></access>
+
+    <!-- ─── REQUIRED TIZEN PRIVILEGES ────────────────────────────── -->
+    <tizen:privilege name="http://tizen.org/privilege/internet"/>
+    <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice"/>
+
+    <!-- ─── REMOTE / D-PAD CURSOR SUPPORT ───────────────────────── -->
+    <!-- Enables on-screen cursor controlled by the Samsung remote d-pad -->
+    <tizen:setting pointing-device-support="enable"/>
+
+    <!-- Entry point -->
+    <content src="index.html"/>
+
+</widget>

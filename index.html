@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="description" content="NetMirror streaming portal for Samsung TV">
+    <title>NetMirror</title>
+    <style>
+        /* ── Reset & full-screen canvas ───────────────────────── */
+        *, *::before, *::after { box-sizing: border-box; }
+        body, html {
+            margin: 0; padding: 0;
+            width: 100%; height: 100%;
+            background-color: #000;
+            overflow: hidden;
+            font-family: 'Segoe UI', Arial, sans-serif;
+        }
+
+        /* ── Splash / loading screen ──────────────────────────── */
+        #splash {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background: radial-gradient(ellipse at center, #1a1a2e 0%, #000 70%);
+            animation: fadeIn 0.8s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.97); }
+            to   { opacity: 1; transform: scale(1); }
+        }
+
+        /* Animated logo ring */
+        .logo-ring {
+            width: 120px;
+            height: 120px;
+            border: 4px solid transparent;
+            border-top-color: #e50914;
+            border-right-color: #e50914;
+            border-radius: 50%;
+            animation: spin 1.2s linear infinite;
+            margin-bottom: 32px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .logo-inner {
+            position: absolute;
+            width: 80px;
+            height: 80px;
+            background: #e50914;
+            border-radius: 50%;
+            top: 20px; left: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .logo-wrapper {
+            position: relative;
+            width: 120px;
+            height: 120px;
+            margin-bottom: 32px;
+        }
+
+        .logo-letter {
+            font-size: 36px;
+            font-weight: 900;
+            color: #fff;
+            letter-spacing: -2px;
+        }
+
+        .app-name {
+            font-size: 42px;
+            font-weight: 800;
+            color: #fff;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            margin-bottom: 12px;
+        }
+
+        .app-name span { color: #e50914; }
+
+        .status-text {
+            font-size: 18px;
+            color: rgba(255,255,255,0.55);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            animation: pulse 1.8s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.5; }
+            50%       { opacity: 1; }
+        }
+
+        /* ── Error overlay (shown if portal fails to load) ────── */
+        #error-overlay {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background: #0d0d0d;
+            color: #fff;
+            text-align: center;
+            padding: 40px;
+        }
+
+        .error-icon { font-size: 64px; margin-bottom: 24px; }
+        .error-title { font-size: 32px; font-weight: 700; margin-bottom: 16px; color: #e50914; }
+        .error-body  { font-size: 18px; color: rgba(255,255,255,0.6); max-width: 600px; line-height: 1.6; }
+        .error-url   { margin-top: 24px; font-size: 14px; color: rgba(255,255,255,0.3); word-break: break-all; }
+    </style>
+</head>
+<body>
+
+    <!-- ── Splash screen (visible during redirect) ─────────────── -->
+    <div id="splash">
+        <div class="logo-wrapper">
+            <div class="logo-ring"></div>
+            <div class="logo-inner">
+                <span class="logo-letter">N</span>
+            </div>
+        </div>
+        <div class="app-name">Net<span>Mirror</span></div>
+        <div class="status-text" id="status-msg">Launching portal…</div>
+    </div>
+
+    <!-- ── Error screen (shown if redirect URL is unreachable) ─── -->
+    <div id="error-overlay">
+        <div class="error-icon">📡</div>
+        <div class="error-title">Cannot Reach NetMirror</div>
+        <div class="error-body">
+            The portal may have moved to a new domain.<br>
+            Update the redirect URL in your GitHub Pages redirect page and relaunch the app.
+        </div>
+        <div class="error-url" id="err-url"></div>
+    </div>
+
+    <script>
+        // ─────────────────────────────────────────────────────────────
+        // CONFIGURATION — change ONLY this URL when the mirror moves.
+        // Best practice: point this to your GitHub Pages redirect so
+        // you can update the final destination without re-packaging.
+        // ─────────────────────────────────────────────────────────────
+        var PORTAL_URL = "https://net77.cc";
+        var FALLBACK_URL = "https://net77.cc";
+        // ─────────────────────────────────────────────────────────────
+
+        // ── Samsung TV Remote key codes ───────────────────────────
+        var KEY = {
+            RETURN : 10009,   // Back / Return button
+            EXIT   : 10182    // Exit button (some models)
+        };
+
+        // ── Remote back-button handler ────────────────────────────
+        window.addEventListener('keydown', function (e) {
+            if (e.keyCode === KEY.RETURN || e.keyCode === KEY.EXIT) {
+                try {
+                    tizen.application.getCurrentApplication().exit();
+                } catch (ex) {
+                    window.history.back();
+                }
+            }
+        });
+
+        // ── Register Tizen TV remote input keys ──────────────────
+        try {
+            tizen.tvinputdevice.registerKey("Return");
+        } catch (ex) { /* Non-fatal; app still works */ }
+
+        // ── Detect whether GitHub Pages URL is the unconfigured placeholder
+        var githubPagesUnconfigured = PORTAL_URL.indexOf("YOUR-GITHUB-USERNAME") !== -1;
+
+        // Active URL: use fallback directly if GitHub Pages isn't configured
+        var activeURL = githubPagesUnconfigured ? FALLBACK_URL : PORTAL_URL;
+
+        // ── Timeout fallback — show status update after 5 s if still loading
+        var slowTimer = setTimeout(function () {
+            document.getElementById('status-msg').textContent = 'Taking longer than usual…';
+        }, 5000);
+
+        // ── If GitHub Pages redirect fails, try the fallback URL instead ──
+        // We probe GitHub Pages via a hidden iframe; if it errors or doesn't
+        // respond in time, we fall through to FALLBACK_URL.
+        var fallbackTimer = null;
+
+        function redirectTo(url) {
+            clearTimeout(slowTimer);
+            clearTimeout(fallbackTimer);
+            window.location.replace(url);
+        }
+
+        if (!githubPagesUnconfigured) {
+            // Give GitHub Pages 8 s to respond; if not, use fallback
+            fallbackTimer = setTimeout(function () {
+                document.getElementById('status-msg').textContent = 'Trying fallback…';
+                redirectTo(FALLBACK_URL);
+            }, 8000);
+        }
+
+        // ── Error screen if FALLBACK_URL also fails (15 s total) ──────────
+        var errorTimer = setTimeout(function () {
+            clearTimeout(slowTimer);
+            clearTimeout(fallbackTimer);
+            document.getElementById('splash').style.display = 'none';
+            document.getElementById('err-url').textContent =
+                'Tried: ' + activeURL + (githubPagesUnconfigured ? '' : ' → ' + FALLBACK_URL);
+            var eo = document.getElementById('error-overlay');
+            eo.style.display = 'flex';
+        }, 15000);
+
+        // ── Redirect to the portal ────────────────────────────────
+        window.addEventListener('load', function () {
+            clearTimeout(errorTimer);
+            redirectTo(activeURL);
+        });
+
+        // Fire immediately as well (belt-and-suspenders for TV WebKit)
+        redirectTo(activeURL);
+    </script>
+
+</body>
+</html>
